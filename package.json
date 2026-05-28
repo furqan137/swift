@@ -1,0 +1,20 @@
+{
+  "name": "beeclean-app",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=apps/backend",
+    "build:backend": "npm run build --workspace=apps/backend",
+    "start:backend": "npm run start --workspace=apps/backend"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "npm@10.9.2",
+  "dependencies": {
+    "typescript": "^6.0.3"
+  }
+}

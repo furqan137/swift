@@ -1,0 +1,527 @@
+import SwiftUI
+
+// MARK: - Side Menu View
+/// Pure panel content — positioning, gestures, and backdrop are owned by the parent.
+struct SideMenuView: View {
+    let isOpen: Bool
+    let onClose: () -> Void
+    let onNewChat: () -> Void
+    let onSelectHistory: ([AIMessage]) -> Void
+
+    @ObservedObject private var history = ChatHistoryService.shared
+
+    @State private var page: SideMenuPage = .menu
+
+    enum SideMenuPage {
+        case menu
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            panelHeader
+                .padding(.top, 12)
+                .padding(.bottom, 12)
+                .padding(.horizontal, 20)
+
+            Rectangle()
+                .fill(Color.black.opacity(0.06))
+                .frame(height: 0.5)
+
+            menuContent
+        }
+        .frame(maxHeight: .infinity, alignment: .top)
+        .background(BitepalCanvas())
+        .onChange(of: isOpen) { _, newValue in
+            if !newValue {
+                // Reset to menu when closed so it's fresh next open
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    page = .menu
+                }
+            }
+        }
+    }
+
+    // MARK: - Panel Header
+
+    private var panelHeader: some View {
+        HStack {
+            if page != .menu {
+                Button {
+                    HapticManager.shared.impact(.light, intensity: 0.5)
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        page = .menu
+                    }
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(Color(hex: "1C1917"))
+                        .frame(width: 38, height: 38)
+                        .background(
+                            Circle()
+                                .fill(Color(hex: "F5F5F4"))
+                                .overlay(
+                                    Circle()
+                                        .stroke(Color.black.opacity(0.08), lineWidth: 0.5)
+                                )
+                        )
+                }
+            }
+
+            if page == .menu {
+                Text("Ask Bee")
+                    .font(.custom("Poppins-Bold", size: 22))
+                    .foregroundColor(Color(hex: "1C1917"))
+            } else {
+                Spacer()
+
+                Text("People")
+                    .font(.custom("Poppins-Bold", size: 19))
+                    .foregroundColor(Color(hex: "1C1917"))
+            }
+
+            Spacer()
+
+            Button {
+                HapticManager.shared.impact(.light, intensity: 0.5)
+                onClose()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(Color(hex: "1C1917"))
+                    .frame(width: 38, height: 38)
+                    .background(
+                        Circle()
+                            .fill(Color(hex: "F5F5F4"))
+                            .overlay(
+                                Circle()
+                                    .stroke(Color.black.opacity(0.08), lineWidth: 0.5)
+                            )
+                    )
+            }
+        }
+    }
+
+    // MARK: - Menu Content
+
+    private var menuContent: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: 0) {
+                menuRow(icon: "plus.circle", title: "New Chat", subtitle: "Start a fresh conversation") {
+                    HapticManager.shared.impact(.light, intensity: 0.7)
+                    onNewChat()
+                }
+
+                menuDivider
+
+                // Inline conversation list
+                if !history.sessions.isEmpty {
+                    inlineConversationList
+                }
+            }
+            .padding(.top, 8)
+        }
+    }
+
+    // MARK: - Inline Conversation List
+
+    private var inlineConversationList: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if !history.pinnedSessions.isEmpty {
+                sectionHeader("Saved")
+                    .padding(.horizontal, 20)
+                    .padding(.top, 12)
+
+                ForEach(history.pinnedSessions) { session in
+                    inlineSessionRow(session)
+                }
+            }
+
+            if !history.recentSessions.isEmpty {
+                sectionHeader("Recent")
+                    .padding(.horizontal, 20)
+                    .padding(.top, 12)
+
+                ForEach(history.recentSessions) { session in
+                    inlineSessionRow(session)
+                }
+            }
+        }
+    }
+
+    private func inlineSessionRow(_ session: ChatSession) -> some View {
+        Button {
+            HapticManager.shared.impact(.light, intensity: 0.7)
+            onSelectHistory(session.messages)
+        } label: {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(session.title)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(Color(hex: "1C1917"))
+                        .lineLimit(1)
+
+                    Text(session.preview)
+                        .font(.system(size: 13))
+                        .foregroundColor(Color(hex: "A1A1AA"))
+                        .lineLimit(1)
+
+                    Text(relativeDate(session.updatedAt))
+                        .font(.system(size: 11))
+                        .foregroundColor(Color(hex: "C7C7CC"))
+                        .padding(.top, 2)
+                }
+
+                Spacer(minLength: 8)
+
+                if session.isPinned {
+                    Image(systemName: "pin.fill")
+                        .font(.system(size: 11))
+                        .foregroundColor(Color(hex: "A1A1AA"))
+                        .padding(.top, 2)
+                }
+            }
+            .padding(.vertical, 12)
+            .padding(.horizontal, 14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(Color(hex: "F5F5F4"))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14)
+                            .stroke(Color.black.opacity(0.06), lineWidth: 0.5)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 4)
+        .contextMenu {
+            Button {
+                HapticManager.shared.impact(.light, intensity: 0.6)
+                history.togglePin(session.id)
+            } label: {
+                Label(
+                    session.isPinned ? "Unpin" : "Pin",
+                    systemImage: session.isPinned ? "pin.slash" : "pin"
+                )
+            }
+
+            Button(role: .destructive) {
+                HapticManager.shared.notify(.warning)
+                history.delete(session.id)
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+        }
+    }
+
+    private func menuRow(icon: String, title: String, subtitle: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                Image(systemName: icon)
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundColor(Color(hex: "1C1917"))
+                    .frame(width: 36, height: 36)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(Color(hex: "F5F5F4"))
+                    )
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.custom("Poppins-Bold", size: 16))
+                        .foregroundColor(Color(hex: "1C1917"))
+
+                    // Was `#A1A1AA` at 12pt — barely visible against the
+                    // cool-gray Bitepal canvas. Bumped to `#78716C`
+                    // (espresso warm gray, same subtitle token used in
+                    // Contacts/Email rows) at 13pt medium so the
+                    // subtitle actually reads.
+                    Text(subtitle)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(Color(hex: "78716C"))
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(Color(hex: "D4D4D8"))
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var menuDivider: some View {
+        Rectangle()
+            .fill(Color.black.opacity(0.04))
+            .frame(height: 0.5)
+            .padding(.leading, 70)
+    }
+
+    // MARK: - People Content
+
+    private let columns = [
+        GridItem(.flexible(), spacing: 14),
+        GridItem(.flexible(), spacing: 14),
+        GridItem(.flexible(), spacing: 14)
+    ]
+
+    private var peopleContent: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 24) {
+                if savedProfiles.isEmpty {
+                    peopleEmptyState
+                } else {
+                    peopleGrid
+                }
+
+                controlsSection
+                indexSection
+
+                Spacer(minLength: 40)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 16)
+        }
+        .onAppear { loadPeople() }
+    }
+
+    private var peopleGrid: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("\(savedProfiles.count) people")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(Color(hex: "A1A1AA"))
+                    .tracking(0.3)
+
+                Spacer()
+
+                if !savedProfiles.isEmpty {
+                    Button {
+                        showDeleteAllPeopleConfirm = true
+                    } label: {
+                        Text("Delete All")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(Color(hex: "DC2626"))
+                    }
+                }
+            }
+
+            LazyVGrid(columns: columns, spacing: 16) {
+                ForEach(savedProfiles, id: \.profileId) { profile in
+                    NavigationLink {
+                        PersonDetailView(profile: profile)
+                    } label: {
+                        personCell(profile)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    // MARK: - Controls Section
+
+    private var controlsSection: some View {
+        VStack(spacing: 0) {
+            toggleRow(icon: "faceid", title: "Face Search", isOn: $faceSearchEnabled)
+            controlsDivider
+            toggleRow(icon: "brain", title: "People in AI", isOn: $peopleAISearchEnabled)
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(Color(hex: "F5F5F4"))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14)
+                        .stroke(Color.black.opacity(0.06), lineWidth: 0.5)
+                )
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    private func toggleRow(icon: String, title: String, isOn: Binding<Bool>) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(Color(hex: "78716C"))
+                .frame(width: 24, height: 24)
+
+            Text(title)
+                .font(.system(size: 15))
+                .foregroundColor(Color(hex: "1C1917"))
+
+            Spacer()
+
+            Toggle("", isOn: isOn)
+                .labelsHidden()
+                .tint(Color(hex: "1C1917"))
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+    }
+
+    // MARK: - Index Section
+
+    private var indexSection: some View {
+        VStack(spacing: 0) {
+            infoRow(icon: "person.crop.circle.badge.checkmark", title: "Faces indexed", value: "\(faceSearch.faceCount())")
+            controlsDivider
+            infoRow(icon: "person.2.circle", title: "Saved people", value: "\(savedProfiles.count)")
+
+            if faceIndexing.isIndexing {
+                controlsDivider
+
+                HStack(spacing: 12) {
+                    ProgressView()
+                        .scaleEffect(0.75)
+                        .frame(width: 24, height: 24)
+
+                    Text("Indexing\u{2026}")
+                        .font(.system(size: 14))
+                        .foregroundColor(Color(hex: "78716C"))
+
+                    Spacer()
+
+                    let pct = faceIndexing.progress.totalAssets > 0
+                        ? Int(Double(faceIndexing.progress.processedAssets) / Double(faceIndexing.progress.totalAssets) * 100)
+                        : 0
+                    Text("\(pct)%")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(Color(hex: "A1A1AA"))
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 11)
+            }
+
+            controlsDivider
+
+            actionButton(icon: "arrow.clockwise", title: "Rebuild Face Index") {
+                showRebuildConfirm = true
+            }
+
+            controlsDivider
+
+            actionButton(icon: "xmark.bin", title: "Clear Face Index", isDestructive: true) {
+                showClearFaceIndexConfirm = true
+            }
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(Color(hex: "F5F5F4"))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14)
+                        .stroke(Color.black.opacity(0.06), lineWidth: 0.5)
+                )
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    private func infoRow(icon: String, title: String, value: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(Color(hex: "78716C"))
+                .frame(width: 24, height: 24)
+
+            Text(title)
+                .font(.system(size: 15))
+                .foregroundColor(Color(hex: "1C1917"))
+
+            Spacer()
+
+            Text(value)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(Color(hex: "A1A1AA"))
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+    }
+
+    private func actionButton(icon: String, title: String, isDestructive: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(isDestructive ? Color(hex: "DC2626") : Color(hex: "78716C"))
+                    .frame(width: 24, height: 24)
+
+                Text(title)
+                    .font(.system(size: 15))
+                    .foregroundColor(isDestructive ? Color(hex: "DC2626") : Color(hex: "1C1917"))
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(isDestructive ? Color(hex: "DC2626").opacity(0.4) : Color(hex: "D4D4D8"))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var controlsDivider: some View {
+        Rectangle()
+            .fill(Color.black.opacity(0.04))
+            .frame(height: 0.5)
+            .padding(.leading, 50)
+    }
+
+    // MARK: - Empty States
+
+    private var peopleEmptyState: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "person.crop.circle.badge.questionmark")
+                .font(.system(size: 36, weight: .light))
+                .foregroundColor(Color(hex: "D4D4D8"))
+
+            Text("No people saved yet")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundColor(Color(hex: "1C1917"))
+
+            Text("Use Find by Face to identify\nand save people.")
+                .font(.system(size: 13))
+                .foregroundColor(Color(hex: "A1A1AA"))
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 32)
+    }
+
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title.uppercased())
+            .font(.system(size: 11, weight: .bold))
+            .foregroundColor(Color(hex: "A1A1AA"))
+            .tracking(1.2)
+            .padding(.top, 4)
+            .padding(.bottom, 6)
+    }
+
+    // MARK: - Helpers
+
+    private func loadPeople() {
+        savedProfiles = faceSearch.loadAllProfiles()
+        Task {
+            for profile in savedProfiles {
+                let meta = await faceSearch.computePersonMetadata(for: profile)
+                profileMetadata[profile.profileId] = meta
+            }
+        }
+    }
+
+    private func relativeDate(_ date: Date) -> String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .short
+        return formatter.localizedString(for: date, relativeTo: Date())
+    }
+}
+
+#Preview {
+    SideMenuView(isOpen: true, onClose: {}, onNewChat: {}, onSelectHistory: { _ in })
+}
